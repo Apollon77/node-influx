@@ -116,7 +116,18 @@ InfluxDB.prototype._parseCallback = function (callback) {
       return callback(err)
     }
     if (res.statusCode < 200 || res.statusCode >= 300) {
-      return callback(new Error(body.error || (typeof body === 'object' ? JSON.stringify(body) : (body || res.statusCode))))
+      var errorMessage
+      if (!body) {
+        errorMessage = 'No body received with status code ' + res.statusCode + ' from Influx.'
+      } else if (body.error) {
+        errorMessage = body.error
+      } else if (typeof body === 'object') {
+        errorMessage = JSON.stringify(body)
+      } else {
+        errorMessage = body
+      }
+
+      return callback(new Error(errorMessage))
     }
 
     // Look for errors in the response body
@@ -387,8 +398,10 @@ InfluxDB.prototype._prepareValues = function (series) {
         if (timestamp) {
           if (timestamp instanceof Date) {
             line += ' ' + timestamp.getTime()
+          } else if (/^[0-9]+$/.test(timestamp)) {
+            line += ' ' + timestamp  // UNIX timestamp
           } else {
-            line += ' ' + timestamp
+            line += ' ' + new Date(timestamp).getTime()  // hopefully an RFC3339 string
           }
         }
       } else {
@@ -417,7 +430,7 @@ InfluxDB.prototype.writeSeries = function (series, options, callback) {
 
   this.request.post({
     url: this.url('write', args.options),
-    pool: typeof args.options.pool !== 'undefined' ? args.options.pool : {},
+    pool: typeof args.options.pool !== 'undefined' ? args.options.pool : undefined,
     body: this._prepareValues(series)
   }, this._parseCallback(args.callback))
 }
